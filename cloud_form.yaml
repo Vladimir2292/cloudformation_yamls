@@ -1,0 +1,77 @@
+Description: SNS to slack with lambda function
+Parameters:
+  SnsTopicName:
+    Type: String
+    Description: Name of Amazon SNS topic.
+  LambdaSourceBucket:
+    Type: String
+    Description: Name of S3 bucket where is code.
+  LambdaNameSourceZip:
+    Type: String
+    Description: Path or name of source zip file with python code.
+  LambdaSlackChannel:
+    Type: String
+    Description: Name of channel or ID for messages.
+  LambdaSlackWebhook:
+    Type: String
+    Description: URL for webhook.
+Mappings: {}
+Conditions: {}
+Resources:
+  NewRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  LambdaDeploy:
+   Type: AWS::Lambda::Function
+   DependsOn:
+   - NewRole
+   Properties:
+    Code:
+      S3Bucket: !Ref LambdaSourceBucket
+      S3Key: !Ref LambdaNameSourceZip
+    Environment:
+      Variables:
+        SLACK_CHANNEL: !Ref LambdaSlackChannel
+        SLACK_WEBHOOK: !Ref LambdaSlackWebhook
+    Role:
+      Fn::GetAtt:
+      - NewRole
+      - Arn
+    Timeout: 60
+    Handler: sns-lambda-slack-master/lambda-slack.lambda_handler
+    Runtime: python3.6
+    MemorySize: 128
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    DependsOn:
+    - LambdaDeploy
+    Properties:
+      Subscription:
+        -
+          Endpoint: 
+            Fn::GetAtt: 
+              - LambdaDeploy
+              - Arn
+          Protocol: lambda
+      TopicName: !Ref SnsTopicName
+  LambdaInvokePermission:
+     Type: AWS::Lambda::Permission
+     Properties:
+       Action: lambda:InvokeFunction
+       Principal: sns.amazonaws.com
+       SourceArn: !Ref SNSTopic
+       FunctionName:
+         Fn::GetAtt:
+         - LambdaDeploy
+         - Arn
